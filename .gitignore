@@ -1,0 +1,18 @@
+data/db/
+data/raw/*.parquet
+data/raw/*.json
+__pycache__/
+*.pyc
+.env
+.venv/
+
+# output/ is generated, but the commentary and run history are
+# committed deliberately -- they are the evidence the pipeline runs.
+output/*
+!output/weekly_commentary.md
+!output/run_history.md
+!output/dashboard.html
+
+# macOS folder metadata
+.DS_Store
+**/.DS_Store

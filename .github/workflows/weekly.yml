@@ -1,0 +1,66 @@
+name: Weekly pipeline
+
+# Runs itself every Monday morning. The commit history this produces is
+# the evidence that the pipeline actually runs on a schedule rather
+# than having been executed once by hand.
+on:
+  schedule:
+    # 21:00 UTC Sunday = 06:30 Monday in Adelaide (ACST, UTC+9:30).
+    # GitHub schedules are UTC only and can run late under load.
+    - cron: "0 21 * * 0"
+  workflow_dispatch:        # lets you trigger a run manually from the UI
+
+permissions:
+  contents: write           # needed to commit the generated commentary
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run evaluation set
+        # Runs BEFORE the pipeline. If the commentary layer is broken,
+        # fail here rather than publishing something wrong.
+        run: python -m tests.eval_commentary
+
+      - name: Run pipeline
+        env:
+          # Optional. Without it the deterministic template writer is
+          # used, which is the correctness baseline anyway -- so a
+          # missing key degrades readability, never accuracy.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python -m src.run_pipeline --offline
+
+      - name: Commit generated outputs
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f output/weekly_commentary.md output/run_history.md
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Weekly pipeline run $(date -u +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: Upload database artifact
+        # The .duckdb file is gitignored (it is generated, not source),
+        # but keeping it as a build artifact means you can download the
+        # exact warehouse any given run produced.
+        uses: actions/upload-artifact@v4
+        with:
+          name: warehouse-${{ github.run_number }}
+          path: data/db/dc.duckdb
+          retention-days: 30
